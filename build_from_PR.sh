@@ -11,6 +11,7 @@ PR="$1"
 PR_REPO="$2"
 REPO=${3:-https://github.com/GoogleCloudPlatform/kubernetes}
 
+echo
 # prompt for missing args
 if [[ -z "$PR" ]]; then
   read -p "Pull-request branch name: " PR
@@ -30,6 +31,7 @@ sleep 3
 echo
 echo "*** yum install -y go git mercurial..."
 yum install -y go git mercurial
+(( $? != 0 )) && exit 1
 
 export GOPATH=/opt/go/
 mkdir -p $GOPATH/src/github.com/GoogleCloudPlatform/
@@ -40,21 +42,25 @@ echo
 echo "*** git clone $REPO..."
 rm -rf kubernetes
 git clone $REPO
+(( $? != 0 )) && exit 1
 cd kubernetes
 
 # add the remote pr repo
 echo
 echo "*** git remote add prbranch $PR_REPO..."
 git remote add prbranch $PR_REPO
+(( $? != 0 )) && exit 1
 
 # checkout a new branch
 echo
 echo "*** git checkout -b $PR..."
 git checkout -b $PR
+(( $? != 0 )) && exit 1
 
 echo
 echo "*** git pull --rebase prbranch $PR..."
 git pull --rebase prbranch $PR
+(( $? != 0 )) && exit 1
 
 # do the build
 echo
@@ -66,7 +72,11 @@ cd $GOPATH/src/github.com/GoogleCloudPlatform/kubernetes
 echo
 echo "*** godep restore..."
 godep restore
+(( $? != 0 )) && exit 1
 
 echo
 echo "*** make..."
 make
+(( $? != 0 )) && exit 1
+
+exit 0
