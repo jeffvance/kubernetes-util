@@ -3,7 +3,7 @@ Utility tools/scripts to make it easier to use kubernetes.
 
 *build_from_PR.sh*
 ###Usage:
-*./build_from_PR.sh pv_panic_fix \
+*./build_from_PR.sh pv_panic_fix 
       https://github.com/markturansky/kubernetes.git*
 
 This script builds a version of kubernetes by merging the PR into the upstream master branch. All args are optional, but typically the first two args should be supplied. If no args are provided the script will prompt for the first two.

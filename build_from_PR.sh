@@ -1,23 +1,32 @@
 #!/bin/bash
-# This script is intended to be run in Fedora.
-# Run this script when someone has submitted a PR you need but their branch is
-# out of date compared to trunk. Modify the repo and branch below to reflect
-# the desired defaults.
+# This script is intended to be run in Fedoraand is based on a similar script
+# written by Steve Watt. Builds a local copy of kubernetes based on the
+# supplied pull-request, the PR repo url and the official kube repo url.
 # Args:
-#   1=pr branch name
-#   2=pr branch repo
+#   1=pr branch name -- prompted for if absent
+#   2=pr branch repo -- prompted for if absent
 #   3=official (upstream) kubernetes repo.
 #
-export PR=${1:-pv_panic_fix}
-export PR_REPO=${2:-https://github.com/markturansky/kubernetes.git}
-export REPO=${3:-https://github.com/GoogleCloudPlatform/kubernetes}
+PR="$1"
+PR_REPO="$2"
+REPO=${3:-https://github.com/GoogleCloudPlatform/kubernetes}
+
+# prompt for missing args
+if [[ -z "$PR" ]]; then
+  read -p "Pull-request branch name: " PR
+  [[ -z "$PR" ]] && exit
+fi
+
+if [[ -z "$PR_REPO" ]]; then
+  read -p "Pull-request's repo url: " PR_REPO
+  [[ -z "$PR_REPO" ]] && exit
+fi
 
 echo
 echo "Building PR \"$PR\" from $PR_REPO onto $REPO..."
-echo
+echo "(Expects the user to have the capability of doing a yum install)"
 sleep 3
 
-# Build Setup
 echo
 echo "*** yum install -y go git mercurial..."
 yum install -y go git mercurial
@@ -26,14 +35,14 @@ export GOPATH=/opt/go/
 mkdir -p $GOPATH/src/github.com/GoogleCloudPlatform/
 cd $GOPATH/src/github.com/GoogleCloudPlatform/
 
-# Clone the Official Upstream Kubernetes Repo
+# clone the upstream kubernetes repo
 echo
 echo "*** git clone $REPO..."
 rm -rf kubernetes
 git clone $REPO
 cd kubernetes
 
-# Add the remote pr repo
+# add the remote pr repo
 echo
 echo "*** git remote add prbranch $PR_REPO..."
 git remote add prbranch $PR_REPO
@@ -47,7 +56,7 @@ echo
 echo "*** git pull --rebase prbranch $PR..."
 git pull --rebase prbranch $PR
 
-# Build !
+# do the build
 echo
 echo "*** build..."
 go get github.com/tools/godep
