@@ -8,7 +8,7 @@ The newly merged kubernetes git repo is located here: /opt/go/src/github.com/Goo
 
 The new kubernetes binaries will be found in /opt/go/src/github.com/GoogleCloudPlatform/kubernetes/_output/local/bin/linux/amd64.
 
-Example
+####Example
 *./build_from_PR.sh pv_panic_fix 
       https://github.com/markturansky/kubernetes.git*
 
