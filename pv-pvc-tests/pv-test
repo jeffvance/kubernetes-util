@@ -1,0 +1,218 @@
+#!/bin/bash
+#
+# Automate pv/pvs pre-binding testing.
+# The number of PVs and claims do not need to be the same.
+# CAUTION: all running PVs and PVCs are deleted by this test!
+#
+# Assumptions:
+# - all pv/pvc files are yaml (filename ends in '.yaml')
+# - the pv/pvc *names* are the same as their filename (w/o extension)
+#
+# Args:
+#  -c = create claim(s) before the pv(s), default is to create the pvs first.
+#  $1 = list of pv filenames (minus yaml suffix), comma separated.
+#  $2 = list of claim filenames (minus yaml suffix), comma separated.
+#
+# Examples:
+#  $0 nfs-pv1,nfs-pv2 nfs-claim2
+#   # creates nfs-pv1.yaml then nfs-pv2.yaml then nfs-claim2.yaml
+#  $0 -c nfs-pv1,nfs-pv2 nfs-claim1,nfs-claim2,nfs-claim3 #pvc created before pv
+#
+echo
+
+kc='/root/go/src/k8s.io/kubernetes/cluster/kubectl.sh'
+MAX=20  # max number of time to check pv/pvc status
+warn=0; err=0
+SLEEP=3 # seconds, per test iteration
+C_OPT=0 # false
+pv_bound=0; pvc_bound=0
+
+# -c option, must appear before list of pvs
+if [[ "$1" == '-c' ]] ; then
+  C_OPT=1
+  SLEEP=30
+  shift
+fi
+
+# convert list of pv and pvcs to arrays
+pvs=(${1//,/ });  numPVs=${#pvs[@]}
+pvcs=(${2//,/ }); numPVCs=${#pvcs[@]}
+
+set expected num of bound pvs to the min of # pvs or pvcs
+expct_bound=$numPVs
+(( numPVCs < numPVs )) && expct_bound=$numPVCs
+
+# cleanup from prior run
+echo "cleanup..."
+$kc delete pv --all
+$kc delete pvc --all
+
+echo
+if (( C_OPT )) ; then
+  echo "Creating PVCs \"${pvcs[@]}\" followed by PVs \"${pvs[@]}\"..."
+  objs="${pvcs[@]} ${pvs[@]}"
+else
+  echo "Creating PVs \"${pvs[@]}\" followed by PVCs \"${pvcs[@]}\"..."
+  objs="${pvs[@]} ${pvcs[@]}"
+fi
+
+# check if prebinding is defined in pvs and/or pvcs
+declare -A pv_pre=(); declare -A pvc_pre=() # assoc arrays
+numPrePVs=0; numPrePVCs=0
+
+for pv in ${pvs[@]}; do
+  # check for claimRef in pv
+  pre="$(sed -n '/claimRef:/,/name:/{/name:/p}' $pv.yaml)"
+  if [[ -n "$pre" ]] ; then # claimRef defined, extract name:
+    pre="${pre#*: }" # just the target name
+    pv_pre[$pv]="$pre" # add to pv assoc array
+    ((numPrePVs++))
+  fi
+done
+for pvc in ${pvcs[@]}; do
+  # check for volumeName in pvc
+  pre="$(grep 'volumeName:' $pvc.yaml)"
+  if [[ -n "$pre" ]] ; then # volumeName defined, extract name
+    pre="${pre#*: }" # just the target name
+    pvc_pre[$pvc]="$pre" # add to pvc assoc array
+    ((numPrePVCs++))
+  fi
+done
+
+# create pvs and pvcs
+for obj in $objs; do
+  $kc create -f $obj.yaml
+  (( $? != 0)) && exit 1
+done
+
+echo
+echo "Test loop for correctly bound PVs..."
+echo "  (max wait time is $((MAX*SLEEP)) seconds)"
+(( C_OPT )) &&
+  echo "  Note: PV binding takes much longer when creating the PVCs first"
+echo
+
+for (( i=1; i<=$MAX; i++ )); do
+  sleep $SLEEP
+  cnt=$($kc get pv | grep -c -E ' Bound | Released ')
+  # adjust cnt in cases of Released pvs (ie claimRef) but no target pvc created
+  (( cnt > expct_bound && numPrePVs > 0 )) && cnt=$expct_bound
+  echo "   $i)  $cnt out of $expct_bound PVs are Bound or Released..."
+  (( cnt >= expct_bound )) && break
+done
+echo
+
+# the expected num of pvs are now bound or we exceeded max tries, so analyze the results:
+for pv in ${pvs[@]}; do
+  p="$($kc get pv $pv --no-headers | grep -v ' Available ')"
+  if [[ -z "$p" ]] ; then  # pv is Available
+    if (( numPVs <= expt_bound )) ; then # this pv is expected to be bound
+      ((err++))
+      echo "ERROR: PV $pv is expected to be bound and is instead Available"
+    fi
+    continue
+  fi
+
+  # pv is not Available -- was it pre-bound?
+  if [[ -n "${pv_pre[$pv]}" ]] ; then # pv defined a claimRef
+    c=$(awk '{print $5}' <<<"$p") # extract the live claim
+    c=${c#*/} # remove namespace from claim name
+    if [[ "$c" != ${pv_pre[$pv]} ]] ; then
+      ((err++))
+      echo "ERROR: PV $pv defined claim ${pv_pre[$pv]} BUT bound to claim $c"
+      continue
+    fi
+
+    # get the target pvc
+    pvc="$($kc get pvc $c --no-headers 2>/dev/null)"
+    if (( $? != 0 )) ; then
+      ((warn++))
+      echo "WARN: PV $pv pre-bound claim $c which does not exist."
+      continue
+    fi
+    if ! grep -q ' Bound ' <<<"$pvc" ; then
+      ((err++))
+      echo -e "ERROR: PV $pv pre-bound claim $c which is not bound. PVC:\n$pvc"
+      continue
+    fi
+    if ! grep -q " $pv " <<<"$pvc" ; then
+      ((err++))
+      p="$(awk '{print $3}' <<<"$pvc")" # extract the pvc's pv
+      echo "ERROR: PV $pv pre-bound claim $c but this claim is bound to PV $p."
+      continue
+    fi
+  fi
+  ((pv_bound++))
+done
+
+# make sure the pvcs bound to right pvs
+for pvc in ${pvcs[@]}; do
+  p="$($kc get pvc $pvc --no-headers | grep -v ' Pending ')"
+  if [[ -z "$p" ]] ; then  # pvc is Pending
+    if (( numPVCs <= expct_bound )) ; then # this pvc is expected to be bound
+      ((err++))
+      echo "ERROR: PVC $pvc is expected to be bound and is instead Pending"
+    fi
+    continue
+  fi
+
+  # pvc is not Available -- was it pre-bound?
+  if [[ -n "${pvc_pre[$pv]}" ]] ; then # pvc defined a volumeName
+    p=$(awk '{print $3}' <<<"$p") # extract the live pv
+    if [[ "$p" != ${pv_pre[$pv]} ]] ; then
+      ((err++))
+      echo "ERROR: PVC $pvc defined pv ${pvc_pre[$pvc]} BUT bound to PV $p."
+      continue
+    fi
+
+    # get the target pv
+    pv="$($kc get pv $p --no-headers 2>/dev/null)"
+    if (( $? != 0 )) ; then
+      ((warn++))
+      echo "WARN: PVC $pvc pre-bound PV $p which does not exist."
+      continue
+    fi
+    if ! grep -q ' Bound ' <<<"$pv" ; then
+      ((err++))
+      echo -e "ERROR: PVC $pvc pre-bound PV $p which is not bound. PV:\n$pv"
+      continue
+    fi
+    if ! grep -q " $pvc " <<<"$pv" ; then
+      ((err++))
+      p="$(awk '{print $5}' <<<"$pv")" # extract the pv's pvc
+      echo "ERROR: PVC $pvc pre-bound PV $p but this volume is bound to claim $p."
+      continue
+    fi
+  fi
+  ((pvc_bound++))
+done
+
+echo
+$kc get pv
+echo
+$kc get pvc
+
+echo -e "\n\n==== Results ====="
+echo $err errors.
+echo $warn warnings.
+
+(( i >= MAX )) &&
+  echo -e "\nFailed to bind all PVs after $MAX tries."
+
+echo
+if (( pv_bound == expct_bound )) ; then
+  echo "All PVs bound to the expected PVCs."
+else
+  echo "1 or more PVs did not bind correctly."
+fi
+
+echo
+if (( pvc_bound == expct_bound )) ; then
+  echo "All PVCs bound to the expected PVs."
+else
+  echo "1 or more PVCs did not bind correctly."
+fi
+
+echo
+(( err > 0 )) && exit 1
+exit 0

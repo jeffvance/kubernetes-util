@@ -1,0 +1,168 @@
+#!/bin/bash
+#
+# Invoke pv-test for the various combinations of PV/PVC tests. These tests happen to be for
+# NFS but they are testing the creation and binding of PVs -> PVCs and PVCs -> PVs.
+# CAUTION: all running PVs and PVCs are deleted by this test!
+#
+# Assumptions:
+# - all pv/pvc files are yaml (filename ends in '.yaml')
+# - all the test files are local to where this test is run from
+#
+# Current tests:
+#   nfs-pv1 (no pre-binding)
+#   nfs-pv2 (no pre-binding)
+#   nfs-pv3 (pre-binds to nfs-claim3)
+#   nfs-claim1 (no pre-binding)
+#   nfs-claim2 (pre-binds to nfs-pv2)
+#   nfs-claim3 (no pre-binding)
+
+t='./pv-test' # core test filename
+f='/tmp/pv-test.log' # log file
+err=0; cnt=0
+
+echo -e "\n*** PV/PVC with Pre-binding Test Suite ***" | tee $f
+echo "(See logfile \"$f\" for all output)"
+echo
+sleep 3
+
+echo -e "\n1. Simple: 1 pv -> 1 pvc..." | tee -a $f
+$t nfs-pv1 nfs-claim1 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+$t nfs-pv2 nfs-claim2 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+$t nfs-pv3 nfs-claim3 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+
+echo -e "\n2. Simple: 1 pvc -> 1 pv..." | tee -a $f
+echo "Note: starting with the pvc requires *considerably* more time to bind"
+$t -c nfs-pv1 nfs-claim1 >>$f
+(( $? != 0 )) && ((err++))
+$t -c nfs-pv2 nfs-claim2 >>$f
+((cnt++))
+(( $? != 0 )) && ((err++))
+$t -c nfs-pv3 nfs-claim3 >>$f
+((cnt++))
+(( $? != 0 )) && ((err++))
+
+echo -e "\n3. Multiple pvs -> 1 pvc..." | tee -a $f
+$t nfs-pv1,nfs-pv2 nfs-claim1 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+$t nfs-pv1,nfs-pv2,nfs-pv3 nfs-claim1 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+$t nfs-pv1,nfs-pv2 nfs-claim2 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+$t nfs-pv1,nfs-pv2,nfs-pv3 nfs-claim2 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+$t nfs-pv1,nfs-pv2 nfs-claim3 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+$t nfs-pv1,nfs-pv2,nfs-pv3 nfs-claim3 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+
+echo -e "\n4. Multiple pvcs -> 1 pv..." | tee -a $f
+echo "Note: starting with the pvc requires *considerably* more time to bind"
+$t -c nfs-pv1,nfs-pv2 nfs-claim1 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+$t -c nfs-pv1,nfs-pv2,nfs-pv3 nfs-claim1 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+$t -c nfs-pv1,nfs-pv2 nfs-claim2 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+$t -c nfs-pv1,nfs-pv2,nfs-pv3 nfs-claim2 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+$t -c nfs-pv1,nfs-pv2 nfs-claim3 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+$t -c nfs-pv1,nfs-pv2,nfs-pv3 nfs-claim3 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+
+echo -e "\n5. Multiple pvs -> multiple pvcs..." | tee -a $f
+$t nfs-pv1,nfs-pv2 nfs-claim1,nfs-claim2 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+$t nfs-pv1,nfs-pv2,nfs-pv3 nfs-claim1,nfs-claim2 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+$t nfs-pv1,nfs-pv2 nfs-claim1,nfs-claim2,nfs-claim3 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+$t nfs-pv1,nfs-pv2,nfs-pv3 nfs-claim1,nfs-claim2,nfs-claim3 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+
+echo -e "\n6. Multiple pvs -> multiple pvcs (reverse order)..." | tee -a $f
+$t nfs-pv2,nfs-pv1 nfs-claim1,nfs-claim2 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+$t nfs-pv2,nfs-pv1 nfs-claim2,nfs-claim1 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+$t nfs-pv3,nfs-pv2,nfs-pv1 nfs-claim1,nfs-claim2 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+$t nfs-pv3,nfs-pv2,nfs-pv1 nfs-claim2,nfs-claim1 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+$t nfs-pv2,nfs-pv1 nfs-claim1,nfs-claim2,nfs-claim3 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+$t nfs-pv2,nfs-pv1 nfs-claim3,nfs-claim2,nfs-claim1 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+$t nfs-pv3,nfs-pv2,nfs-pv1 nfs-claim1,nfs-claim2,nfs-claim3 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+$t nfs-pv3,nfs-pv2,nfs-pv1 nfs-claim3,nfs-claim2,nfs-claim1 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+
+echo -e "\n7. Multiple pvcs -> multiple pvs..." | tee -a $f
+echo "Note: starting with the pvc requires *considerably* more time to bind"
+$t -c nfs-pv2,nfs-pv1 nfs-claim1,nfs-claim2 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+$t -c nfs-pv1,nfs-pv2 nfs-claim2,nfs-claim1 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+$t -c nfs-pv3,nfs-pv2,nfs-pv1 nfs-claim1,nfs-claim2 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+$t -c nfs-pv2,nfs-pv1 nfs-claim1,nfs-claim2 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+$t -c nfs-pv2,nfs-pv1 nfs-claim3,nfs-claim2,nfs-claim1 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+$t -c nfs-pv1,nfs-pv3 nfs-claim3,nfs-claim2,nfs-claim1 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+$t -c nfs-pv3,nfs-pv2,nfs-pv1 nfs-claim2,nfs-claim3 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+$t -c nfs-pv3,nfs-pv2,nfs-pv1 nfs-claim3,nfs-claim2,nfs-claim1 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+
+if (( err > 0 )) ; then
+  grep ERROR $f | less
+fi
+
+echo -e "\n$cnt tests run with $err errors" | tee -a $f
+echo "See logfile \"$f\" for all output"
+echo -e "\nEnd of PV/PVC Test Suite" | tee -a $f
+echo
+
+(( err > 0 )) && exit 1
+exit 0
