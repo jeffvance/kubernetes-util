@@ -20,12 +20,18 @@
 #
 echo
 
+# change kc to your `kubectl.sh` or `oc` command
 kc='/root/go/src/k8s.io/kubernetes/cluster/kubectl.sh'
-MAX=20  # max number of time to check pv/pvc status
-warn=0; err=0
+
+# if you're seeing an error where not all pvs bind in time then increase MAX
+MAX=25  # max number of time to check pv/pvc status
+
+# note: SLEEP is much longer when -c specified
 SLEEP=3 # seconds, per test iteration
+
 C_OPT=0 # false
 pv_bound=0; pvc_bound=0
+warn=0; err=0
 
 # -c option, must appear before list of pvs
 if [[ "$1" == '-c' ]] ; then
@@ -196,7 +202,7 @@ echo -e "\n\n==== Results ====="
 echo $err errors.
 echo $warn warnings.
 
-(( i >= MAX )) &&
+(( i > MAX )) &&
   echo -e "\nFailed to bind all PVs after $MAX tries."
 
 echo

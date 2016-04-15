@@ -16,7 +16,9 @@
 #   nfs-claim2 (pre-binds to nfs-pv2)
 #   nfs-claim3 (no pre-binding)
 
-t='./pv-test' # core test filename
+# change t to point to the pv-test script
+t='/root/kubernetes-util/pv-pvc-tests/pv-test' # core test filename
+# change f to point to the desired log file
 f='/tmp/pv-test.log' # log file
 err=0; cnt=0
 
