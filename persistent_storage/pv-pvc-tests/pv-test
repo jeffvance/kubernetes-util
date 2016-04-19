@@ -24,7 +24,7 @@ echo
 kc='/root/go/src/k8s.io/kubernetes/cluster/kubectl.sh'
 
 # if you're seeing an error where not all pvs bind in time then increase MAX
-MAX=25  # max number of time to check pv/pvc status
+MAX=25  # max number of time to check pv status
 
 # note: SLEEP is much longer when -c specified
 SLEEP=3 # seconds, per test iteration
@@ -98,98 +98,130 @@ echo "  (max wait time is $((MAX*SLEEP)) seconds)"
   echo "  Note: PV binding takes much longer when creating the PVCs first"
 echo
 
+# note: for pre-bound pvs the "Released" state is the same as "Available"
 for (( i=1; i<=$MAX; i++ )); do
   sleep $SLEEP
-  cnt=$($kc get pv | grep -c -E ' Bound | Released ')
-  # adjust cnt in cases of Released pvs (ie claimRef) but no target pvc created
-  (( cnt > expct_bound && numPrePVs > 0 )) && cnt=$expct_bound
-  echo "   $i)  $cnt out of $expct_bound PVs are Bound or Released..."
-  (( cnt >= expct_bound )) && break
+  cnt=$($kc get pv | grep -c ' Bound ')
+  (( cnt == expct_bound )) && break  # done, all expected pvs are bound
+  echo "   $i)  $cnt out of $expct_bound PVs are Bound ..."
 done
 echo
 
-# the expected num of pvs are now bound or we exceeded max tries, so analyze the results:
+
+## the expected num of pvs are now bound or we exceeded max tries, so analyze the results:
 for pv in ${pvs[@]}; do
-  p="$($kc get pv $pv --no-headers | grep -v ' Available ')"
-  if [[ -z "$p" ]] ; then  # pv is Available
-    if (( numPVs <= expt_bound )) ; then # this pv is expected to be bound
+  p="$($kc get pv $pv --no-headers | grep ' Bound ')"
+  # is pv bound?
+  if [[ -z "$p" ]] ; then  # not bound
+    # it may be ok that this pv isn't bound but this is difficult to know
+    # we can check for pre-binding and see if the target claim exists
+    [[ -z "${pv_pre[$pv]}" ]] && continue # no claimRef so assume ok for pv to not be bound
+    # get the target pvc for pre-bound pv
+    pvc="$($kc get pvc ${pv_pre[$pv]} --no-headers 2>/dev/null)"
+    (( $? != 0 )) && continue # no target pvc so assume ok that pv is not bound
+    # there's a pvc matching claimRef but it may have been bound to a different pv
+    if ! grep -q ' Bound ' <<<"$pvc" ; then
+      # pvc that matches claimRef is not bound, so report error and continue
+      echo "ERROR: PV $pv is not bound and its claimRef (${pv_pre[$pv]}) exists but is also not bound"
       ((err++))
-      echo "ERROR: PV $pv is expected to be bound and is instead Available"
+      continue
     fi
+    # pv's claimRef's pvc is bound
+    # claimRef pvc could be bound to this pv or to a different pv
+    p="$(awk '{print $3}' <<<"$pvc")" # extract the pvc's pv
+    echo -n "ERROR: PV $pv is not bound but its claimRef (${pv_pre[$pv]}) is bound to "
+    [[ "$p" == "$pv" ]] && echo "it" || echo "PV $p"
+    ((err++))
     continue
   fi
 
-  # pv is not Available -- was it pre-bound?
-  if [[ -n "${pv_pre[$pv]}" ]] ; then # pv defined a claimRef
-    c=$(awk '{print $5}' <<<"$p") # extract the live claim
-    c=${c#*/} # remove namespace from claim name
-    if [[ "$c" != ${pv_pre[$pv]} ]] ; then
-      ((err++))
-      echo "ERROR: PV $pv defined claim ${pv_pre[$pv]} BUT bound to claim $c"
-      continue
-    fi
-
-    # get the target pvc
-    pvc="$($kc get pvc $c --no-headers 2>/dev/null)"
-    if (( $? != 0 )) ; then
-      ((warn++))
-      echo "WARN: PV $pv pre-bound claim $c which does not exist."
-      continue
-    fi
-    if ! grep -q ' Bound ' <<<"$pvc" ; then
-      ((err++))
-      echo -e "ERROR: PV $pv pre-bound claim $c which is not bound. PVC:\n$pvc"
-      continue
-    fi
-    if ! grep -q " $pv " <<<"$pvc" ; then
-      ((err++))
-      p="$(awk '{print $3}' <<<"$pvc")" # extract the pvc's pv
-      echo "ERROR: PV $pv pre-bound claim $c but this claim is bound to PV $p."
-      continue
-    fi
+  # pv is bound!
+  # did pv bind to the correct pvc?
+  c=$(awk '{print $5}' <<<"$p") # extract the live claim
+  c=${c#*/} # remove namespace from live claim name
+  # get the claim for the pv
+  pvc="$($kc get pvc $c --no-headers 2>/dev/null)"
+  if (( $? != 0 )) ; then
+    echo "ERROR: bound PV $pv's claim ($c) does not exist"
+    ((err++))
+    continue
   fi
+  if ! grep -q ' Bound ' <<<"$pvc" ; then
+    echo "ERROR: bound PV $pv's claim ($c) is not bound"
+    ((err++))
+    continue
+  fi
+  if ! grep -q " $pv " <<<"$pvc" ; then
+    p="$(awk '{print $3}' <<<"$pvc")" # extract the pvc's pv
+    echo "ERROR: bound PV $pv's claim ($c) exists but this claim is bound to PV $p"
+    ((err++))
+    continue
+  fi
+  # check for pre-bound pv being bound to its target claim
+  if [[ -n "${pv_pre[$pv]}" && "$c" != ${pv_pre[$pv]} ]] ; then
+    echo "ERROR: bound PV $pv's claimRef (${pv_pre[$pv]}) does not match its live PVC $c"
+    ((err++))
+    continue
+  fi
+
   ((pv_bound++))
 done
 
 # make sure the pvcs bound to right pvs
 for pvc in ${pvcs[@]}; do
-  p="$($kc get pvc $pvc --no-headers | grep -v ' Pending ')"
-  if [[ -z "$p" ]] ; then  # pvc is Pending
-    if (( numPVCs <= expct_bound )) ; then # this pvc is expected to be bound
+  p="$($kc get pvc $pvc --no-headers | grep ' Bound ')"
+  # is pvc bound?
+  if [[ -z "$p" ]] ; then  # not bound
+    # it may be ok that this pvc isn't bound but this is difficult to know
+    # we can check for pre-binding and see if the target pv exists
+    [[ -z "${pvc_pre[$pvc]}" ]] && continue # no volumeName so assume ok for pvc to not be bound
+    # get the target pv for pre-bound pvc
+    pv="$($kc get pv ${pvc_pre[$pvc]} --no-headers 2>/dev/null)"
+    (( $? != 0 )) && continue # no target pv so assume ok that pvc is not bound
+    # there's a pv matching volumeName but it may have been bound to a different pvc
+    if ! grep -q ' Bound ' <<<"$pv" ; then
+      # pv that matches volumeName is not bound, so report error and continue
+      echo "ERROR: PVC $pvc is not bound and its volumeName (${pvc_pre[$pvc]}) exists but is also not bound"
       ((err++))
-      echo "ERROR: PVC $pvc is expected to be bound and is instead Pending"
+      continue
     fi
+    # pvc's volumeName is bound but clearly not to this pvc
+    c="$(awk '{print $5}' <<<"$pv")" # extract the pv's pvc
+    c=${c#*/} # remove namespace from claim name
+    echo "ERROR: PVC $pvc is not bound but its volumeName (${pvc_pre[$pvc]}) is bound to PVC $c"
+    ((err++))
     continue
   fi
 
-  # pvc is not Available -- was it pre-bound?
-  if [[ -n "${pvc_pre[$pv]}" ]] ; then # pvc defined a volumeName
-    p=$(awk '{print $3}' <<<"$p") # extract the live pv
-    if [[ "$p" != ${pv_pre[$pv]} ]] ; then
-      ((err++))
-      echo "ERROR: PVC $pvc defined pv ${pvc_pre[$pvc]} BUT bound to PV $p."
-      continue
-    fi
-
-    # get the target pv
-    pv="$($kc get pv $p --no-headers 2>/dev/null)"
-    if (( $? != 0 )) ; then
-      ((warn++))
-      echo "WARN: PVC $pvc pre-bound PV $p which does not exist."
-      continue
-    fi
-    if ! grep -q ' Bound ' <<<"$pv" ; then
-      ((err++))
-      echo -e "ERROR: PVC $pvc pre-bound PV $p which is not bound. PV:\n$pv"
-      continue
-    fi
-    if ! grep -q " $pvc " <<<"$pv" ; then
-      ((err++))
-      p="$(awk '{print $5}' <<<"$pv")" # extract the pv's pvc
-      echo "ERROR: PVC $pvc pre-bound PV $p but this volume is bound to claim $p."
-      continue
-    fi
+  # pvc is bound!
+  # did pvc bind to the correct pv?
+  pv=$(awk '{print $3}' <<<"$p") # extract the live pv
+  # get the pv
+  p="$($kc get pv $pv --no-headers 2>/dev/null)"
+  if (( $? != 0 )) ; then
+    echo "ERROR: bound PVC $pvc's PV ($pv) does not exist"
+    ((err++))
+    continue
   fi
+  if ! grep -q ' Bound ' <<<"$p" ; then
+    echo "ERROR: bound PVC $pvc's PV ($pv) is not bound"
+    ((err++))
+    continue
+  fi
+  if ! grep -q "/$pvc " <<<"$p" ; then
+    c="$(awk '{print $5}' <<<"$p")" # extract the pv's pvc
+    c=${c#*/} # remove namespace from claim name
+    echo "ERROR: bound PVC $pvc's PV ($pv) exists but this PV is bound to PVC $c"
+    ((err++))
+    continue
+  fi
+  # check for pre-bound pvc being bound to its target pv
+  if [[ -n "${pvc_pre[$pvc]}" && "$pv" != ${pvc_pre[$pvc]} ]] ; then
+    echo "ERROR: bound PVC $pvc's volumeName (${pvc_pre[$pvc]}) does not match its live PV $pv"
+    ((err++))
+    continue
+  fi
+
   ((pvc_bound++))
 done
 

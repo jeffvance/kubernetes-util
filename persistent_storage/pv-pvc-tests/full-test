@@ -17,145 +17,101 @@
 #   nfs-claim3 (no pre-binding)
 
 # change t to point to the pv-test script
-t='/root/kubernetes-util/pv-pvc-tests/pv-test' # core test filename
+t='/root/kubernetes-util/persistent_storage/pv-pvc-tests/pv-test' # core test filename
 # change f to point to the desired log file
 f='/tmp/pv-test.log' # log file
-err=0; cnt=0
+
+err=0; cnt=1
 
 echo -e "\n*** PV/PVC with Pre-binding Test Suite ***" | tee $f
 echo "(See logfile \"$f\" for all output)"
+echo -e "\npv-test located: $t" | tee -a $f
 echo
 sleep 3
 
-echo -e "\n1. Simple: 1 pv -> 1 pvc..." | tee -a $f
+
+echo -e "\nA. Simple: 1 pv -> 1 pvc..." | tee -a $f
+echo "   Unit: $cnt: Expect PV1 to be bound to claim1" | tee -a $f
 $t nfs-pv1 nfs-claim1 >>$f
 (( $? != 0 )) && ((err++))
 ((cnt++))
+echo "   Unit: $cnt: Expect PV2 to be bound to claim2" | tee -a $f
 $t nfs-pv2 nfs-claim2 >>$f
 (( $? != 0 )) && ((err++))
 ((cnt++))
+echo "   Unit: $cnt: Expect PV3 to be bound to claim3" | tee -a $f
 $t nfs-pv3 nfs-claim3 >>$f
 (( $? != 0 )) && ((err++))
 ((cnt++))
 
-echo -e "\n2. Simple: 1 pvc -> 1 pv..." | tee -a $f
+echo -e "\nB. Simple: 1 pvc -> 1 pv..." | tee -a $f
 echo "Note: starting with the pvc requires *considerably* more time to bind"
+echo "   Unit: $cnt: Expect PV1 to be bound to claim1" | tee -a $f
 $t -c nfs-pv1 nfs-claim1 >>$f
 (( $? != 0 )) && ((err++))
+((cnt++))
+echo "   Unit: $cnt: Expect PV2 to be bound to claim2" | tee -a $f
 $t -c nfs-pv2 nfs-claim2 >>$f
-((cnt++))
 (( $? != 0 )) && ((err++))
+((cnt++))
+echo "   Unit: $cnt: Expect PV3 to be bound to claim3" | tee -a $f
 $t -c nfs-pv3 nfs-claim3 >>$f
-((cnt++))
 (( $? != 0 )) && ((err++))
+((cnt++))
 
-echo -e "\n3. Multiple pvs -> 1 pvc..." | tee -a $f
+
+echo -e "\nC. Multiple pvs -> 1 pvc..." | tee -a $f
+echo "  Unit $cnt: Expect either PV1 or PV2 to be bound to claim1" | tee -a $f
 $t nfs-pv1,nfs-pv2 nfs-claim1 >>$f
 (( $? != 0 )) && ((err++))
 ((cnt++))
-$t nfs-pv1,nfs-pv2,nfs-pv3 nfs-claim1 >>$f
-(( $? != 0 )) && ((err++))
-((cnt++))
+echo "  Unit $cnt: Expect PV2 to be bound to claim2" | tee -a $f
 $t nfs-pv1,nfs-pv2 nfs-claim2 >>$f
 (( $? != 0 )) && ((err++))
 ((cnt++))
-$t nfs-pv1,nfs-pv2,nfs-pv3 nfs-claim2 >>$f
-(( $? != 0 )) && ((err++))
-((cnt++))
-$t nfs-pv1,nfs-pv2 nfs-claim3 >>$f
-(( $? != 0 )) && ((err++))
-((cnt++))
+echo "  Unit $cnt: Expect PV3 to be bound to claim3" | tee -a $f
 $t nfs-pv1,nfs-pv2,nfs-pv3 nfs-claim3 >>$f
 (( $? != 0 )) && ((err++))
 ((cnt++))
+echo "  Unit $cnt: Expect PV1 or PV2 to be bound to claim1, ignore PV3 errors" | tee -a $f
+$t nfs-pv1,nfs-pv2,nfs-pv3 nfs-claim1 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
 
-echo -e "\n4. Multiple pvcs -> 1 pv..." | tee -a $f
+
+echo -e "\nD. Multiple pvcs -> 1 pv..." | tee -a $f
 echo "Note: starting with the pvc requires *considerably* more time to bind"
-$t -c nfs-pv1,nfs-pv2 nfs-claim1 >>$f
+echo "  Unit $cnt: Expect PV1 to be bound to either claim" | tee -a $f
+$t -c nfs-pv1 nfs-claim1,nfs-claim2 >>$f
 (( $? != 0 )) && ((err++))
 ((cnt++))
-$t -c nfs-pv1,nfs-pv2,nfs-pv3 nfs-claim1 >>$f
+echo "  Unit $cnt: Expect PV2 to be bound to claim2, ignore other claim errors" | tee -a $f
+$t -c nfs-pv2 nfs-claim1,nfs-claim2 >>$f
 (( $? != 0 )) && ((err++))
 ((cnt++))
-$t -c nfs-pv1,nfs-pv2 nfs-claim2 >>$f
-(( $? != 0 )) && ((err++))
-((cnt++))
-$t -c nfs-pv1,nfs-pv2,nfs-pv3 nfs-claim2 >>$f
-(( $? != 0 )) && ((err++))
-((cnt++))
-$t -c nfs-pv1,nfs-pv2 nfs-claim3 >>$f
-(( $? != 0 )) && ((err++))
-((cnt++))
-$t -c nfs-pv1,nfs-pv2,nfs-pv3 nfs-claim3 >>$f
+echo "  Unit $cnt: Expect PV3 to be bound to claim3, ignore other claim errors" | tee -a $f
+$t -c nfs-pv3 nfs-claim1,nfs-claim2,nfs-claim3 >>$f
 (( $? != 0 )) && ((err++))
 ((cnt++))
 
-echo -e "\n5. Multiple pvs -> multiple pvcs..." | tee -a $f
-$t nfs-pv1,nfs-pv2 nfs-claim1,nfs-claim2 >>$f
-(( $? != 0 )) && ((err++))
-((cnt++))
-$t nfs-pv1,nfs-pv2,nfs-pv3 nfs-claim1,nfs-claim2 >>$f
-(( $? != 0 )) && ((err++))
-((cnt++))
-$t nfs-pv1,nfs-pv2 nfs-claim1,nfs-claim2,nfs-claim3 >>$f
-(( $? != 0 )) && ((err++))
-((cnt++))
+
+echo -e "\nE. Multiple pvs and multiple pvcs..." | tee -a $f
+echo "  Unit $cnt: Expect PV3 -> claim3, PV2 may not bind to claim2 if it finds claim1 first" | tee -a $f
 $t nfs-pv1,nfs-pv2,nfs-pv3 nfs-claim1,nfs-claim2,nfs-claim3 >>$f
 (( $? != 0 )) && ((err++))
 ((cnt++))
+echo "  Unit $cnt: Expect PV2 -> claim2, PV1 may bind to claim3 if it finds it before claim1" | tee -a $f
+$t -c nfs-pv1,nfs-pv2,nfs-pv3 nfs-claim1,nfs-claim2,nfs-claim3 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+echo "  Unit $cnt: Expect PV3 -> claim3 and PV2 -> claim2" | tee -a $f
+$t nfs-pv1,nfs-pv2,nfs-pv3 nfs-claim3,nfs-claim2,nfs-claim1 >>$f
+(( $? != 0 )) && ((err++))
+((cnt++))
+echo "  Unit $cnt: Expect PV3 -> claim3 and PV2 -> claim2" | tee -a $f
+$t -c nfs-pv3,nfs-pv2,nfs-pv1 nfs-claim1,nfs-claim2,nfs-claim3 >>$f
+(( $? != 0 )) && ((err++))
 
-echo -e "\n6. Multiple pvs -> multiple pvcs (reverse order)..." | tee -a $f
-$t nfs-pv2,nfs-pv1 nfs-claim1,nfs-claim2 >>$f
-(( $? != 0 )) && ((err++))
-((cnt++))
-$t nfs-pv2,nfs-pv1 nfs-claim2,nfs-claim1 >>$f
-(( $? != 0 )) && ((err++))
-((cnt++))
-$t nfs-pv3,nfs-pv2,nfs-pv1 nfs-claim1,nfs-claim2 >>$f
-(( $? != 0 )) && ((err++))
-((cnt++))
-$t nfs-pv3,nfs-pv2,nfs-pv1 nfs-claim2,nfs-claim1 >>$f
-(( $? != 0 )) && ((err++))
-((cnt++))
-$t nfs-pv2,nfs-pv1 nfs-claim1,nfs-claim2,nfs-claim3 >>$f
-(( $? != 0 )) && ((err++))
-((cnt++))
-$t nfs-pv2,nfs-pv1 nfs-claim3,nfs-claim2,nfs-claim1 >>$f
-(( $? != 0 )) && ((err++))
-((cnt++))
-$t nfs-pv3,nfs-pv2,nfs-pv1 nfs-claim1,nfs-claim2,nfs-claim3 >>$f
-(( $? != 0 )) && ((err++))
-((cnt++))
-$t nfs-pv3,nfs-pv2,nfs-pv1 nfs-claim3,nfs-claim2,nfs-claim1 >>$f
-(( $? != 0 )) && ((err++))
-((cnt++))
-
-echo -e "\n7. Multiple pvcs -> multiple pvs..." | tee -a $f
-echo "Note: starting with the pvc requires *considerably* more time to bind"
-$t -c nfs-pv2,nfs-pv1 nfs-claim1,nfs-claim2 >>$f
-(( $? != 0 )) && ((err++))
-((cnt++))
-$t -c nfs-pv1,nfs-pv2 nfs-claim2,nfs-claim1 >>$f
-(( $? != 0 )) && ((err++))
-((cnt++))
-$t -c nfs-pv3,nfs-pv2,nfs-pv1 nfs-claim1,nfs-claim2 >>$f
-(( $? != 0 )) && ((err++))
-((cnt++))
-$t -c nfs-pv2,nfs-pv1 nfs-claim1,nfs-claim2 >>$f
-(( $? != 0 )) && ((err++))
-((cnt++))
-$t -c nfs-pv2,nfs-pv1 nfs-claim3,nfs-claim2,nfs-claim1 >>$f
-(( $? != 0 )) && ((err++))
-((cnt++))
-$t -c nfs-pv1,nfs-pv3 nfs-claim3,nfs-claim2,nfs-claim1 >>$f
-(( $? != 0 )) && ((err++))
-((cnt++))
-$t -c nfs-pv3,nfs-pv2,nfs-pv1 nfs-claim2,nfs-claim3 >>$f
-(( $? != 0 )) && ((err++))
-((cnt++))
-$t -c nfs-pv3,nfs-pv2,nfs-pv1 nfs-claim3,nfs-claim2,nfs-claim1 >>$f
-(( $? != 0 )) && ((err++))
-((cnt++))
 
 if (( err > 0 )) ; then
   grep ERROR $f | less
