@@ -6,6 +6,8 @@ These scripts test PV/PVC creation and pre-binding.
 
 This bash script runs many combinations of creating PVs first, or PVCs first, and tests binding. The tests happen to use the NFS plugin but the point is to test PV binding.  PV pre-binding is defined as the pv spec containing a `claimRef`. PVC pre-binding is defined as the pvc spec containing `volumeName`.
 
+Binding is much slower when claims are created before PVs and thus there is the `-x` option which skips all tests that create claims first. `-x` is the only argument and the default is to not skip any tests.
+
 `full-test` logs to _/tmp/pv-test.log_
 
 ####Example

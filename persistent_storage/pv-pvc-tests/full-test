@@ -4,6 +4,10 @@
 # NFS but they are testing the creation and binding of PVs -> PVCs and PVCs -> PVs.
 # CAUTION: all running PVs and PVCs are deleted by this test!
 #
+# Args:
+#   -x = skip all of the tests where claims are created before pvs. -x is faster but not
+#        the default.
+#
 # Assumptions:
 # - all pv/pvc files are yaml (filename ends in '.yaml')
 # - all the test files are local to where this test is run from
@@ -23,16 +27,21 @@ f='/tmp/pv-test.log' # log file
 
 err=0; cnt=1
 
+# parse arg
+SKIP=0  # false
+[[ "$1" == '-x' ]] && {
+  SKIP=1; shift; }
+
 echo -e "\n*** PV/PVC with Pre-binding Test Suite ***" | tee $f
 echo "(See logfile \"$f\" for all output)"
 echo -e "\npv-test located: $t" | tee -a $f
+echo "... skipping all test where claims are created before the pvs...";
 echo
 sleep 3
 
 
 echo -e "\nA. Simple: 1 pv -> 1 pvc..." | tee -a $f
 echo "   Unit: $cnt: Expect PV1 to be bound to claim1" | tee -a $f
-$t nfs-pv1 nfs-claim1 >>$f
 (( $? != 0 )) && ((err++))
 ((cnt++))
 echo "   Unit: $cnt: Expect PV2 to be bound to claim2" | tee -a $f
@@ -44,73 +53,81 @@ $t nfs-pv3 nfs-claim3 >>$f
 (( $? != 0 )) && ((err++))
 ((cnt++))
 
-echo -e "\nB. Simple: 1 pvc -> 1 pv..." | tee -a $f
-echo "Note: starting with the pvc requires *considerably* more time to bind"
-echo "   Unit: $cnt: Expect PV1 to be bound to claim1" | tee -a $f
-$t -c nfs-pv1 nfs-claim1 >>$f
-(( $? != 0 )) && ((err++))
-((cnt++))
-echo "   Unit: $cnt: Expect PV2 to be bound to claim2" | tee -a $f
-$t -c nfs-pv2 nfs-claim2 >>$f
-(( $? != 0 )) && ((err++))
-((cnt++))
-echo "   Unit: $cnt: Expect PV3 to be bound to claim3" | tee -a $f
-$t -c nfs-pv3 nfs-claim3 >>$f
-(( $? != 0 )) && ((err++))
-((cnt++))
+if (( ! SKIP )); then
+  echo -e "\nB. Simple: 1 pvc -> 1 pv..." | tee -a $f
+  echo "Note: starting with the pvc requires *considerably* more time to bind"
+  echo "   Unit: $cnt: Expect PV1 to be bound to claim1" | tee -a $f
+  $t -c nfs-pv1 nfs-claim1 >>$f
+  (( $? != 0 )) && ((err++))
+  ((cnt++))
+  echo "   Unit: $cnt: Expect PV2 to be bound to claim2" | tee -a $f
+  $t -c nfs-pv2 nfs-claim2 >>$f
+  (( $? != 0 )) && ((err++))
+  ((cnt++))
+  echo "   Unit: $cnt: Expect PV3 to be bound to claim3" | tee -a $f
+  $t -c nfs-pv3 nfs-claim3 >>$f
+  (( $? != 0 )) && ((err++))
+  ((cnt++))
+fi
 
 
 echo -e "\nC. Multiple pvs -> 1 pvc..." | tee -a $f
-echo "  Unit $cnt: Expect either PV1 or PV2 to be bound to claim1" | tee -a $f
+echo "   Unit $cnt: Expect either PV1 or PV2 to be bound to claim1" | tee -a $f
 $t nfs-pv1,nfs-pv2 nfs-claim1 >>$f
 (( $? != 0 )) && ((err++))
 ((cnt++))
-echo "  Unit $cnt: Expect PV2 to be bound to claim2" | tee -a $f
+echo "   Unit $cnt: Expect PV2 to be bound to claim2" | tee -a $f
 $t nfs-pv1,nfs-pv2 nfs-claim2 >>$f
 (( $? != 0 )) && ((err++))
 ((cnt++))
-echo "  Unit $cnt: Expect PV3 to be bound to claim3" | tee -a $f
+echo "   Unit $cnt: Expect PV3 to be bound to claim3" | tee -a $f
 $t nfs-pv1,nfs-pv2,nfs-pv3 nfs-claim3 >>$f
 (( $? != 0 )) && ((err++))
 ((cnt++))
-echo "  Unit $cnt: Expect PV1 or PV2 to be bound to claim1, ignore PV3 errors" | tee -a $f
+echo "   Unit $cnt: Expect PV1 or PV2 to be bound to claim1, ignore PV3 errors" | tee -a $f
 $t nfs-pv1,nfs-pv2,nfs-pv3 nfs-claim1 >>$f
 (( $? != 0 )) && ((err++))
 ((cnt++))
 
 
-echo -e "\nD. Multiple pvcs -> 1 pv..." | tee -a $f
-echo "Note: starting with the pvc requires *considerably* more time to bind"
-echo "  Unit $cnt: Expect PV1 to be bound to either claim" | tee -a $f
-$t -c nfs-pv1 nfs-claim1,nfs-claim2 >>$f
-(( $? != 0 )) && ((err++))
-((cnt++))
-echo "  Unit $cnt: Expect PV2 to be bound to claim2, ignore other claim errors" | tee -a $f
-$t -c nfs-pv2 nfs-claim1,nfs-claim2 >>$f
-(( $? != 0 )) && ((err++))
-((cnt++))
-echo "  Unit $cnt: Expect PV3 to be bound to claim3, ignore other claim errors" | tee -a $f
-$t -c nfs-pv3 nfs-claim1,nfs-claim2,nfs-claim3 >>$f
-(( $? != 0 )) && ((err++))
-((cnt++))
+if (( ! SKIP )); then
+  echo -e "\nD. Multiple pvcs -> 1 pv..." | tee -a $f
+  echo "Note: starting with the pvc requires *considerably* more time to bind"
+  echo "   Unit $cnt: Expect PV1 to be bound to either claim" | tee -a $f
+  $t -c nfs-pv1 nfs-claim1,nfs-claim2 >>$f
+  (( $? != 0 )) && ((err++))
+  ((cnt++))
+  echo "   Unit $cnt: Expect PV2 to be bound to claim2, ignore other claim errors" | tee -a $f
+  $t -c nfs-pv2 nfs-claim1,nfs-claim2 >>$f
+  (( $? != 0 )) && ((err++))
+  ((cnt++))
+  echo "   Unit $cnt: Expect PV3 to be bound to claim3, ignore other claim errors" | tee -a $f
+  $t -c nfs-pv3 nfs-claim1,nfs-claim2,nfs-claim3 >>$f
+  (( $? != 0 )) && ((err++))
+  ((cnt++))
+fi
 
 
 echo -e "\nE. Multiple pvs and multiple pvcs..." | tee -a $f
-echo "  Unit $cnt: Expect PV3 -> claim3, PV2 may not bind to claim2 if it finds claim1 first" | tee -a $f
+echo "   Unit $cnt: Expect PV3 -> claim3, PV2 may not bind to claim2 if it finds claim1 first" | tee -a $f
 $t nfs-pv1,nfs-pv2,nfs-pv3 nfs-claim1,nfs-claim2,nfs-claim3 >>$f
 (( $? != 0 )) && ((err++))
 ((cnt++))
-echo "  Unit $cnt: Expect PV2 -> claim2, PV1 may bind to claim3 if it finds it before claim1" | tee -a $f
-$t -c nfs-pv1,nfs-pv2,nfs-pv3 nfs-claim1,nfs-claim2,nfs-claim3 >>$f
-(( $? != 0 )) && ((err++))
-((cnt++))
-echo "  Unit $cnt: Expect PV3 -> claim3 and PV2 -> claim2" | tee -a $f
+if (( ! SKIP )); then
+  echo "   Unit $cnt: Expect PV2 -> claim2, PV1 may bind to claim3 if it finds it before claim1" | tee -a $f
+  $t -c nfs-pv1,nfs-pv2,nfs-pv3 nfs-claim1,nfs-claim2,nfs-claim3 >>$f
+  (( $? != 0 )) && ((err++))
+  ((cnt++))
+fi
+echo "   Unit $cnt: Expect PV3 -> claim3 and PV2 -> claim2" | tee -a $f
 $t nfs-pv1,nfs-pv2,nfs-pv3 nfs-claim3,nfs-claim2,nfs-claim1 >>$f
 (( $? != 0 )) && ((err++))
 ((cnt++))
-echo "  Unit $cnt: Expect PV3 -> claim3 and PV2 -> claim2" | tee -a $f
-$t -c nfs-pv3,nfs-pv2,nfs-pv1 nfs-claim1,nfs-claim2,nfs-claim3 >>$f
-(( $? != 0 )) && ((err++))
+if (( ! SKIP )); then
+  echo "   Unit $cnt: Expect PV3 -> claim3 and PV2 -> claim2" | tee -a $f
+  $t -c nfs-pv3,nfs-pv2,nfs-pv1 nfs-claim1,nfs-claim2,nfs-claim3 >>$f
+  (( $? != 0 )) && ((err++))
+fi
 
 
 if (( err > 0 )) ; then
