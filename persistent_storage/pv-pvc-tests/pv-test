@@ -2,6 +2,7 @@
 #
 # Automate pv/pvs pre-binding testing.
 # The number of PVs and claims do not need to be the same.
+# Exit code is the number of errors (0 or more).
 # CAUTION: all running PVs and PVCs are deleted by this test!
 #
 # Assumptions:
@@ -225,6 +226,11 @@ for pvc in ${pvcs[@]}; do
   ((pvc_bound++))
 done
 
+if (( i > MAX )) ; then
+  echo -e "\nERROR: failed to bind all PVs after $MAX tries."
+  ((err++))
+fi
+
 echo
 $kc get pv
 echo
@@ -233,9 +239,6 @@ $kc get pvc
 echo -e "\n\n==== Results ====="
 echo $err errors.
 echo $warn warnings.
-
-(( i > MAX )) &&
-  echo -e "\nFailed to bind all PVs after $MAX tries."
 
 echo
 if (( pv_bound == expct_bound )) ; then
@@ -252,5 +255,4 @@ else
 fi
 
 echo
-(( err > 0 )) && exit 1
-exit 0
+exit $err
