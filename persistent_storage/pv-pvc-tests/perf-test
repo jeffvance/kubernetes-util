@@ -1,0 +1,153 @@
+#!/bin/bash
+#
+# Invoke pv-test for the various combinations of PV/PVC tests. These tests
+# happen to be for NFS but they are testing the creation and binding of
+# PVs -> PVCs and PVCs -> PVs.
+# Time the test and count the number of iterations in syncVolume() and of
+# syncClaim(). The glob() string used to determine when the 2 funcs above are
+# invoked is defined below. NOTE: the LOG_LEVEL usually needs to be 5 or
+# higher -- not 3 which is the default. Therefore, the LOG_LEVEL env variable
+# needs to be exported, eg. export LOG_LEVEL=5.
+#
+# ASSUMPTIONS:
+#   1) hack/local-up-cluster.sh is used to run k8s all-in-one on the same node
+#      running this test.
+#
+# CAUTION: all running PVs and PVCs are deleted by this test!
+#
+# Args:
+#   -x = skip all of the tests where claims are created before pvs.
+#        -x is faster but is not the default.
+#
+# Assumptions:
+# - all pv/pvc files are yaml (filename ends in '.yaml').
+# - all the test files are local to where this test is run from.
+#
+# Current tests:
+#   nfs-pv1 (no pre-binding)
+#   nfs-pv2 (no pre-binding)
+#   nfs-pv3 (pre-binds to nfs-claim3)
+#   nfs-claim1 (no pre-binding)
+#   nfs-claim2 (pre-binds to nfs-pv2)
+#   nfs-claim3 (no pre-binding)
+
+# change t to point to the pv-test script
+t='/root/kubernetes-util/persistent_storage/pv-pvc-tests/pv-test' # core test
+# change f to point to the desired log file
+f='/tmp/pv-test.log' # log file
+# path to local-up-cluster.sh
+go_path=${KPATH:-"$GOPATH/src/k8s.io/kubernetes"}
+# kubernetes log file being examined for the glog() record used to count
+# syncVolume() and syncClaim iterations
+klog='/tmp/kube-controller-manager.log'
+# grep string used to know if syncVolume() or syncClaim() were called
+syncVol_str='[Ss]ynchronizing PersistentVolume\['
+syncClaim_str='[Ss]ynchronizing PersistentVolumeClaim\['
+total_syncClaim=0; total_syncVol=0
+
+err=0; cnt=0
+
+
+# delete hack/local-up-cluster bash, etcd, and kube-* processes.
+function cleanup_local_up_cluster() {
+
+  local pid
+
+  # hack/local-up... pid
+  pid=$(ps a | grep local-up-cluster | grep -v grep | awk '{print $1}')
+  [[ -n "$pid" ]] && kill $pid >& /dev/null
+
+  # make sure etcd and kube-* process are really gone...
+  pkill etcd   >& /dev/null
+  pkill kube-* >& /dev/null
+  sleep 3 # give em some time to die...
+}
+
+# run hack/local-up... script in backgroud shell.
+function start_local_up_cluster() {
+
+  ( pushd $go_path
+    LOG_LEVEL=5 hack/local-up-cluster.sh
+    popd ) >& /dev/null &
+
+  sleep 4 # give local-up time to start
+}
+
+# pre-processing and invoke timed test. Effectively delete the $klog log file
+# by restarting hack/local-up-cluster.sh. Note: if you delete then touch the
+# $klog log file k8s stops logging to it (for an unknown reason).
+# Args:
+#   $@=test to run and test args.
+function begin_test() {
+
+  ((cnt++)) # inc global test counter
+
+  # re-start hack/local-up-cluster.sh
+  # needed since the $klog log file cannot be cleared and it needs to be
+  # effectively cleared since grep is used to count records in it.
+  cleanup_local_up_cluster
+  start_local_up_cluster
+
+  # need to use time program not shell built-in for -f option
+  /usr/bin/time -f 'Elapsed: %E' $@
+  let err+=$? # exit status = num of test errors
+}
+
+# post test processing.
+function end_test() {
+  local call_cnt
+
+  # count syncVolume and syncClaim interations in this test run
+  call_cnt=$(grep -c "$syncVol_str" $klog)
+  (( $? != 0 )) && call_cnt=0
+  if (( call_cnt == 0 )) ; then
+    echo >&2 "ERROR: found 0 calls to 'syncVolume()' which is weird..."
+    exit 1
+  fi
+  echo "syncVolume() calls: $call_cnt" | tee -a $f
+  let total_syncVol+=call_cnt
+
+  call_cnt=$(grep -c "$syncClaim_str" $klog)
+  (( $? != 0 )) && call_cnt=0
+  if (( call_cnt == 0 )) ; then
+    echo >&2 "ERROR: found 0 calls to 'syncClaim()' which is weird..."
+    exit 1
+  fi
+  echo "syncClaim() calls: $call_cnt" | tee -a $f
+  let total_syncClaim+=call_cnt
+
+  echo
+}
+
+
+## main ##
+
+echo -e "\n*** Special PV/PVC Test Suite -- compare perf ***" | tee $f
+echo -e "\nk8s repo located: $go_path"                 | tee -a $f
+echo    "pv-test located:  $t"                         | tee -a $f
+echo -e "\nLOG_LEVEL=5 (overrides exported setting)"   | tee -a $f
+echo    "CLAIM_BINDER_SYNC_PERIOD=$CLAIM_BINDER_SYNC_PERIOD" | tee -a $f
+echo -e "\nSee logfile \"$f\" for all output"
+echo
+sleep 2
+
+echo -e "\n pv ->  pvc..." | tee -a $f
+start_time=$(date +%s.%N)
+begin_test $t nfs-pv1 nfs-claim1 >>$f
+end_time=$(date +%s.%N)
+end_test
+total_time=$(echo "$end_time - $start_time" | bc)
+total_time=${total_time:0:${#total_time}-7} # truncate nanosecs to 2 digits
+echo -e "Total elapsed time:\n   $total_time seconds" | tee -a $f
+
+echo -e "\n pvc ->  pv..." | tee -a $f
+start_time=$(date +%s.%N)
+begin_test $t -c nfs-pv1 nfs-claim1 >>$f
+end_time=$(date +%s.%N)
+end_test
+total_time=$(echo "$end_time - $start_time" | bc)
+total_time=${total_time:0:${#total_time}-7} # truncate nanosecs to 2 digits
+echo -e "Total elapsed time:\n   $total_time seconds" | tee -a $f
+
+cleanup_local_up_cluster
+
