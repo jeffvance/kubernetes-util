@@ -100,19 +100,15 @@ function end_test() {
   # count syncVolume and syncClaim interations in this test run
   call_cnt=$(grep -c "$syncVol_str" $klog)
   (( $? != 0 )) && call_cnt=0
-  if (( call_cnt == 0 )) ; then
-    echo >&2 "ERROR: found 0 calls to 'syncVolume()' which is weird..."
-    exit 1
-  fi
+  (( call_cnt == 0 )) &&
+    echo >&2 "WARN: found 0 calls to 'syncVolume()' which is unexpected..."
   echo "syncVolume() calls: $call_cnt" | tee -a $f
   let total_syncVol+=call_cnt
 
   call_cnt=$(grep -c "$syncClaim_str" $klog)
   (( $? != 0 )) && call_cnt=0
-  if (( call_cnt == 0 )) ; then
-    echo >&2 "ERROR: found 0 calls to 'syncClaim()' which is weird..."
-    exit 1
-  fi
+  (( call_cnt == 0 )) &&
+    echo >&2 "WARN: found 0 calls to 'syncClaim()' which is unexpected..."
   echo "syncClaim() calls: $call_cnt" | tee -a $f
   let total_syncClaim+=call_cnt
 
