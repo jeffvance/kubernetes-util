@@ -9,7 +9,7 @@ The tests call a script which creates one or more PVs (presistent volumes) and o
 The script used is [full-test](full-test).
 
 **Note:**
-  (_full-test_ replaces the [previous](old_full-test) script, and is more consistent in capturing the differences between creating PVs before claims and vice-versa)
+  (_full-test_ replaces the [previous](old_full-test) script, and is more consistent in capturing the differences between creating PVs before claims versus creating claims before PVs)
 
   1. the `LOG_LEVEL` variable is set to 5 in order to capture the number of calls to _syncClaim()_ and
 to _syncVolume()_. This is hard-coded in the script. 
@@ -31,11 +31,35 @@ other times the claims are created first (which always takes longer).
 # Performance Results
 (unexpected or poor results are in **bold**)
 
-### k8s master with Jan's controller refactor changes merged
+### "Latest" kubernetes
++ **2016-05-26 v1.3.0-alpha.4.581**
+```
+Client Version: version.Info{Major:"1", Minor:"3+", GitVersion:"v1.3.0-alpha.4.581+cd700ee3eb58e8-dirty", GitCommit:"cd700ee3eb58e8cef9f098a8c75746a30f0c6961", GitTreeState:"dirty", BuildDate:"2016-05-27T06:55:19Z", GoVersion:"go1.6.1", Compiler:"gc", Platform:"linux/amd64"}
+Server Version: version.Info{Major:"1", Minor:"3+", GitVersion:"v1.3.0-alpha.4.581+cd700ee3eb58e8-dirty", GitCommit:"cd700ee3eb58e8cef9f098a8c75746a30f0c6961", GitTreeState:"dirty", BuildDate:"2016-05-27T06:55:19Z", GoVersion:"go1.6.1", Compiler:"gc", Platform:"linux/amd64"}
+```
+#### _PVs created before claims_ (14 tests):
+| 10m claim sync period | 30s claim sync period | 10s claim sync period |
+| --- | --- | --- |
+| Errors: 32* | Errors: 11* | Errors: 6* |
+| Elapsed: **613.10**s | Elapsed: 452.94s | Elapsed: 269.81s |
+| syncVolume calls: 68 | syncVolume calls: 332 | syncVolume calls: 400 |
+| syncClaim calls: 12 | syncClaim calls: 88 | syncClaim calls: 108 |
+
+#### _Claims created before PVs_ (14 tests):
+| 10m claim sync period | 30s claim sync period | 10s claim sync period |
+| --- | --- | --- |
+| Errors: 31* | Errors: 6* | Errors: 3* |
+| Elapsed: 2891.32s | Elapsed: 713.32s | Elapsed: 402.14s |
+| syncVolume calls: 80 | syncVolume calls: 388 | syncVolume calls: 500 |
+| syncClaim calls: 16 | syncClaim calls: 102 | syncClaim calls: 136 |
+
+
++ **2016-05-20 v1.3.0-alpha.4.450**
 ```
 Client Version: version.Info{Major:"1", Minor:"3+", GitVersion:"v1.3.0-alpha.4.450+e1dcf2066861a0-dirty", GitCommit:"e1dcf2066861a0d2c7301a798bf66246c164c158", GitTreeState:"dirty", BuildDate:"2016-05-24T22:37:08Z", GoVersion:"go1.6.1", Compiler:"gc", Platform:"linux/amd64"}
 Server Version: version.Info{Major:"1", Minor:"3+", GitVersion:"v1.3.0-alpha.4.450+e1dcf2066861a0-dirty", GitCommit:"e1dcf2066861a0d2c7301a798bf66246c164c158", GitTreeState:"dirty", BuildDate:"2016-05-24T22:37:08Z", GoVersion:"go1.6.1", Compiler:"gc", Platform:"linux/amd64"}
 ```
+
 #### _PVs created before claims_ (14 tests):
 | 10m claim sync period | 30s claim sync period | 10s claim sync period |
 | --- | --- | --- |
@@ -55,11 +79,15 @@ Server Version: version.Info{Major:"1", Minor:"3+", GitVersion:"v1.3.0-alpha.4.4
 
 ## Archive Results
 (using [`old-full-test`](old-full-test) instead of [`full-test`](full-test))
+
 ### k8s master with Jan's controller refactor changes merged
+
++ Version: **1.3.0-alpha.4.450**
 ```
 Client Version: version.Info{Major:"1", Minor:"3+", GitVersion:"v1.3.0-alpha.4.450+e1dcf2066861a0-dirty", GitCommit:"e1dcf2066861a0d2c7301a798bf66246c164c158", GitTreeState:"dirty", BuildDate:"2016-05-24T22:37:08Z", GoVersion:"go1.6.1", Compiler:"gc", Platform:"linux/amd64"}
 Server Version: version.Info{Major:"1", Minor:"3+", GitVersion:"v1.3.0-alpha.4.450+e1dcf2066861a0-dirty", GitCommit:"e1dcf2066861a0d2c7301a798bf66246c164c158", GitTreeState:"dirty", BuildDate:"2016-05-24T22:37:08Z", GoVersion:"go1.6.1", Compiler:"gc", Platform:"linux/amd64"}
 ```
+
 #### _PVs always created before claims_ (9 tests):
 | 10m claim sync period | 30s claim sync period |
 | --- | --- |
@@ -79,9 +107,11 @@ Server Version: version.Info{Major:"1", Minor:"3+", GitVersion:"v1.3.0-alpha.4.4
 
 
 ### k8s master prior to Jan's controller refactor
-(version not recorded, but latest prior to Jan's merge)
+
++ (version not recorded, but latest prior to Jan's merge)
 
 #### _PVs always created before claims_ (9 tests):
+
 | 10m claim sync period | 30s claim sync period |
 | --- | --- |
 | Errors: 13* | Errors: 8* |
@@ -99,4 +129,4 @@ Server Version: version.Info{Major:"1", Minor:"3+", GitVersion:"v1.3.0-alpha.4.4
 | syncClaim calls: 87 | syncClaim calls: 324 |
 
 \* the number of errors needs to be taken with a grain of salt since some of the errors are a result of binding races.
-Also, the number of errors in the _PV-always-create-first_ tests cannot be compared to the errors in the _Claim-created-first_ tests.
+Also, the number of errors in the _PV-create-first_ tests cannot be compared to the errors in the _Claim-created-first_ tests.
