@@ -25,10 +25,10 @@ echo
 kc=${KPATH:-"$GOPATH/src/k8s.io/kubernetes"}/cluster/kubectl.sh
 
 # if you're seeing an error where not all pvs bind in time then increase MAX
-MAX=25  # max number of time to check pv status
+MAX=20  # max number of time to check pv status
 
-# note: SLEEP is much longer when -c specified
-SLEEP=3 # seconds, per test iteration
+# note: SLEEP is longer when -c is specified
+SLEEP=2 # seconds, per test iteration
 
 C_OPT=0 # false
 pv_bound=0; pvc_bound=0
@@ -37,7 +37,7 @@ warn=0; err=0
 # -c option, must appear before list of pvs
 if [[ "$1" == '-c' ]] ; then
   C_OPT=1
-  SLEEP=30
+  SLEEP=10
   shift
 fi
 
@@ -186,11 +186,13 @@ for pvc in ${pvcs[@]}; do
       ((err++))
       continue
     fi
-    # pvc's volumeName is bound but clearly not to this pvc
+    # pvc's target volumeName is bound but is it bound to this pvc?
     c="$(awk '{print $5}' <<<"$pv")" # extract the pv's pvc
     c=${c#*/} # remove namespace from claim name
-    echo "ERROR: PVC $pvc is not bound but its volumeName (${pvc_pre[$pvc]}) is bound to PVC $c"
-    ((err++))
+    if [[ "$c" != "$pvc" ]] ; then
+      echo "ERROR: PVC $pvc is not bound but its volumeName (${pvc_pre[$pvc]}) is bound to PVC $c"
+      ((err++))
+    fi
     continue
   fi
 

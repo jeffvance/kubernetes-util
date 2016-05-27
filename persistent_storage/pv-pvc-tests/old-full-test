@@ -1,15 +1,13 @@
 #!/bin/bash
-# Note: this script is based on `full-test` but is consistent regarding executing
-#   pv created first vs. claim created first.
 #
 # Invoke pv-test for the various combinations of PV/PVC tests. These tests
 # happen to be for NFS but they are testing the creation and binding of
 # PVs -> PVCs and PVCs -> PVs.
-# The tests are timed  and the number of iterations in syncVolume() and in
-# syncClaim() are conted. The string used to determine when the 2 funcs above
-# are invoked is defined below.
-# NOTE: the LOG_LEVEL usually needs to be 5 or higher -- not 3 which is the default.
-#    Therefore, the LOG_LEVEL env variable needs to be exported, eg. export LOG_LEVEL=5.
+# Time the test and count the number of iterations in syncVolume() and of
+# syncClaim(). The glob() string used to determine when the 2 funcs above are
+# invoked is defined below. NOTE: the LOG_LEVEL usually needs to be 5 or
+# higher -- not 3 which is the default. Therefore, the LOG_LEVEL env variable
+# needs to be exported, eg. export LOG_LEVEL=5.
 #
 # ASSUMPTIONS:
 #   1) hack/local-up-cluster.sh is used to run k8s all-in-one on the same node
@@ -18,8 +16,8 @@
 # CAUTION: all running PVs and PVCs are deleted by this test!
 #
 # Args:
-#   -c = create all PVCs (claims) before creating the PVs. This is typically much slower
-#        than creating the PVs first, which is the default.
+#   -x = skip all of the tests where claims are created before pvs.
+#        -x is faster but is not the default.
 #
 # Assumptions:
 # - all pv/pvc files are yaml (filename ends in '.yaml').
@@ -45,8 +43,6 @@ klog='/tmp/kube-controller-manager.log'
 # grep string used to know if syncVolume() or syncClaim() were called
 syncVol_str='[Ss]ynchronizing PersistentVolume\['
 syncClaim_str='[Ss]ynchronizing PersistentVolumeClaim\['
-
-copt=''
 total_syncClaim=0; total_syncVol=0
 
 err=0; cnt=0
@@ -62,9 +58,9 @@ function cleanup_local_up_cluster() {
   [[ -n "$pid" ]] && kill $pid >& /dev/null
 
   # make sure etcd and kube-* process are really gone...
-  pkill etcd  >& /dev/null
-  pkill kube* >& /dev/null
-  sleep 1 # give em some time to die...
+  pkill etcd   >& /dev/null
+  pkill kube-* >& /dev/null
+  sleep 3 # give em some time to die...
 }
 
 # run hack/local-up... script in backgroud shell.
@@ -123,17 +119,15 @@ function end_test() {
 ## main ##
 
 # parse arg
-[[ "$1" == '-c' ]] && {
-  copt="$1"; shift; }
+SKIP=0  # false
+[[ "$1" == '-x' ]] && {
+  SKIP=1; shift; }
 
 echo -e "\n*** PV/PVC with Pre-binding Test Suite ***" | tee $f
-if [[ -z "$copt" ]] ; then
-  echo "    Creating PVs before claims" | tee -a $f
-else
-  echo "    Creating claims before PVs" | tee -a $f
-fi
 echo -e "\nk8s repo located: $go_path"                 | tee -a $f
 echo    "pv-test located:  $t"                         | tee -a $f
+(( SKIP )) &&
+  echo "   (skipping all test where claims are created before the pvs)" | tee -a $f;
 echo -e "\nLOG_LEVEL=5 (overrides exported setting)"   | tee -a $f
 echo    "CLAIM_BINDER_SYNC_PERIOD=$CLAIM_BINDER_SYNC_PERIOD" | tee -a $f
 echo -e "\nSee logfile \"$f\" for all output"
@@ -146,51 +140,77 @@ start_time=$(date +%s.%N)
 
 echo -e "\nA. Simple: 1 pv -> 1 pvc..." | tee -a $f
 echo "   Unit: $cnt: Expect PV1 to be bound to claim1" | tee -a $f
-begin_test $t $copt nfs-pv1 nfs-claim1 >>$f
+begin_test $t nfs-pv1 nfs-claim1 >>$f
 end_test
 echo "   Unit: $cnt: Expect PV2 to be bound to claim2" | tee -a $f
-begin_test $t $copt nfs-pv2 nfs-claim2 >>$f
+begin_test $t nfs-pv2 nfs-claim2 >>$f
 end_test
 echo "   Unit: $cnt: Expect PV3 to be bound to claim3" | tee -a $f
-begin_test $t $copt nfs-pv3 nfs-claim3 >>$f
+begin_test $t nfs-pv3 nfs-claim3 >>$f
 end_test
 
-echo -e "\nB. 2 PVs -> 2 PVCs..." | tee -a $f
-echo "   Unit $cnt: Expect both PVs to be bound to both claims" | tee -a $f
-begin_test $t $copt nfs-pv1,nfs-pv2 nfs-claim1,nfs-claim2 >>$f
+if (( ! SKIP )); then
+  echo -e "\nB. Simple: 1 pvc -> 1 pv..." | tee -a $f
+  echo "Note: starting with the pvc requires *considerably* more time to bind"
+  echo "   Unit: $cnt: Expect PV1 to be bound to claim1" | tee -a $f
+  begin_test $t -c nfs-pv1 nfs-claim1 >>$f
+  end_test
+  echo "   Unit: $cnt: Expect PV2 to be bound to claim2" | tee -a $f
+  begin_test $t -c nfs-pv2 nfs-claim2 >>$f
+  end_test
+  echo "   Unit: $cnt: Expect PV3 to be bound to claim3" | tee -a $f
+  begin_test $t -c nfs-pv3 nfs-claim3 >>$f
+  end_test
+fi
+
+
+echo -e "\nC. Multiple pvs -> 1 pvc..." | tee -a $f
+echo "   Unit $cnt: Expect either PV1 or PV2 to be bound to claim1" | tee -a $f
+begin_test $t nfs-pv1,nfs-pv2 nfs-claim1 >>$f
 end_test
-echo "   Unit $cnt: Expect both PVs to be bound to both claims" | tee -a $f
-begin_test $t $copt nfs-pv1,nfs-pv2 nfs-claim2,nfs-claim1 >>$f
+echo "   Unit $cnt: Expect PV2 to be bound to claim2" | tee -a $f
+begin_test $t nfs-pv1,nfs-pv2 nfs-claim2 >>$f
 end_test
-echo "   Unit $cnt: Expect both PVs to be bound to both claims" | tee -a $f
-begin_test $t $copt nfs-pv2,nfs-pv1 nfs-claim1,nfs-claim2 >>$f
+echo "   Unit $cnt: Expect PV3 to be bound to claim3" | tee -a $f
+begin_test $t nfs-pv1,nfs-pv2,nfs-pv3 nfs-claim3 >>$f
 end_test
-echo "   Unit $cnt: Expect both PVs to be bound to both claims" | tee -a $f
-begin_test $t $copt nfs-pv2,nfs-pv1 nfs-claim2,nfs-claim1 >>$f
-end_test
-echo "   Unit $cnt: Expect pre-bound PVs to be bound to claims" | tee -a $f
-begin_test $t $copt nfs-pv2,nfs-pv3 nfs-claim2,nfs-claim3 >>$f
-end_test
-echo "   Unit $cnt: Expect pre-bound PVs to be bound to claims" | tee -a $f
-begin_test $t $copt nfs-pv3,nfs-pv2 nfs-claim2,nfs-claim3 >>$f
-end_test
-echo "   Unit $cnt: Expect pre-bound PVs to be bound to claims" | tee -a $f
-begin_test $t $copt nfs-pv2,nfs-pv3 nfs-claim3,nfs-claim2 >>$f
+echo "   Unit $cnt: Expect PV1 or PV2 to be bound to claim1, ignore PV3 errors" | tee -a $f
+begin_test $t nfs-pv1,nfs-pv2,nfs-pv3 nfs-claim1 >>$f
 end_test
 
-echo -e "\nC. 3 PVs -> 3 PVCs..." | tee -a $f
+
+if (( ! SKIP )); then
+  echo -e "\nD. Multiple pvcs -> 1 pv..." | tee -a $f
+  echo "Note: starting with the pvc requires *considerably* more time to bind"
+  echo "   Unit $cnt: Expect PV1 to be bound to either claim" | tee -a $f
+  begin_test $t -c nfs-pv1 nfs-claim1,nfs-claim2 >>$f
+  end_test
+  echo "   Unit $cnt: Expect PV2 to be bound to claim2, ignore other claim errors" | tee -a $f
+  begin_test $t -c nfs-pv2 nfs-claim1,nfs-claim2 >>$f
+  end_test
+  echo "   Unit $cnt: Expect PV3 to be bound to claim3, ignore other claim errors" | tee -a $f
+  begin_test $t -c nfs-pv3 nfs-claim1,nfs-claim2,nfs-claim3 >>$f
+  end_test
+fi
+
+
+echo -e "\nE. Multiple pvs and multiple pvcs..." | tee -a $f
 echo "   Unit $cnt: Expect PV3 -> claim3, PV2 may not bind to claim2 if it finds claim1 first" | tee -a $f
-begin_test $t $copt nfs-pv1,nfs-pv2,nfs-pv3 nfs-claim1,nfs-claim2,nfs-claim3 >>$f
+begin_test $t nfs-pv1,nfs-pv2,nfs-pv3 nfs-claim1,nfs-claim2,nfs-claim3 >>$f
 end_test
+if (( ! SKIP )); then
+  echo "   Unit $cnt: Expect PV2 -> claim2, PV1 may bind to claim3 if it finds it before claim1" | tee -a $f
+  begin_test $t -c nfs-pv1,nfs-pv2,nfs-pv3 nfs-claim1,nfs-claim2,nfs-claim3 >>$f
+  end_test
+fi
 echo "   Unit $cnt: Expect PV3 -> claim3 and PV2 -> claim2" | tee -a $f
-begin_test $t $copt nfs-pv1,nfs-pv2,nfs-pv3 nfs-claim3,nfs-claim2,nfs-claim1 >>$f
+begin_test $t nfs-pv1,nfs-pv2,nfs-pv3 nfs-claim3,nfs-claim2,nfs-claim1 >>$f
 end_test
-echo "   Unit $cnt: Expect PV3 -> claim3 and PV2 -> claim2" | tee -a $f
-begin_test $t $copt nfs-pv3,nfs-pv2,nfs-pv1 nfs-claim1,nfs-claim2,nfs-claim3 >>$f
-end_test
-echo "   Unit $cnt: Expect PV3 -> claim3 and PV2 -> claim2" | tee -a $f
-begin_test $t $copt nfs-pv3,nfs-pv2,nfs-pv1 nfs-claim3,nfs-claim2,nfs-claim1 >>$f
-end_test
+if (( ! SKIP )); then
+  echo "   Unit $cnt: Expect PV3 -> claim3 and PV2 -> claim2" | tee -a $f
+  begin_test $t -c nfs-pv3,nfs-pv2,nfs-pv1 nfs-claim1,nfs-claim2,nfs-claim3 >>$f
+  end_test
+fi
 
 
 end_time=$(date +%s.%N)
