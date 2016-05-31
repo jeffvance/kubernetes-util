@@ -21,8 +21,10 @@
 #
 echo
 
-# change kc to your `kubectl.sh` or `oc` command
-kc=${KPATH:-"$GOPATH/src/k8s.io/kubernetes"}/cluster/kubectl.sh
+# change kc to your `kubectl` *binary* or `oc` command
+# note: for k8s, kc used to point to cluster/kubectl.sh but that stopped
+#   working in v1.3.0-alpha.4.581, so the binary is required.
+kc=${KPATH:-"$GOPATH/src/k8s.io/kubernetes"}/_output/local/bin/linux/amd64/kubectl
 
 # if you're seeing an error where not all pvs bind in time then increase MAX
 MAX=20  # max number of time to check pv status
