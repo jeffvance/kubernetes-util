@@ -32,6 +32,28 @@ other times the claims are created first (which always takes longer).
 (unexpected or poor results are in **bold**)
 
 ### "Latest" kubernetes
++ **2016-05-31 v1.3.0-alpha.4.869**
+```
+Client Version: version.Info{Major:"1", Minor:"3+", GitVersion:"v1.3.0-alpha.4.869+c1c0567e37b699-dirty", GitCommit:"c1c0567e37b6990a2ad4d6662dbaf3e3c5d2fd36", GitTreeState:"dirty", BuildDate:"2016-05-31T23:04:23Z", GoVersion:"go1.6.1", Compiler:"gc", Platform:"linux/amd64"}
+Server Version: version.Info{Major:"1", Minor:"3+", GitVersion:"v1.3.0-alpha.4.869+c1c0567e37b699-dirty", GitCommit:"c1c0567e37b6990a2ad4d6662dbaf3e3c5d2fd36", GitTreeState:"dirty", BuildDate:"2016-05-31T23:04:23Z", GoVersion:"go1.6.1", Compiler:"gc", Platform:"linux/amd64"}
+```
+#### _PVs created before claims_ (14 tests):
+| 10m claim sync period | 30s claim sync period | 10s claim sync period |
+| --- | --- | --- |
+| Errors: 39* | Errors: 12* | Errors: 6* |
+| Elapsed: 615.02s | Elapsed: 522.71s | Elapsed: 248.73s |
+| syncVolume calls: 112 | syncVolume calls: 322 | syncVolume calls: 354 |
+| syncClaim calls: 13 | syncClaim calls: 49 | syncClaim calls: 60 |
+
+#### _Claims created before PVs_ (14 tests):
+| 10m claim sync period | 30s claim sync period | 10s claim sync period |
+| --- | --- | --- |
+| Errors: 32* | Errors: 3* | Errors: 2* |
+| Elapsed: 2690.17s | Elapsed: 682.91s | Elapsed: 412.02s |
+| syncVolume calls: 68 | syncVolume calls: 378 | syncVolume calls: 474 |
+| syncClaim calls: 1 | syncClaim calls: 60 | syncClaim calls: 95 |
+
+
 + **2016-05-26 v1.3.0-alpha.4.581**
 ```
 Client Version: version.Info{Major:"1", Minor:"3+", GitVersion:"v1.3.0-alpha.4.581+cd700ee3eb58e8-dirty", GitCommit:"cd700ee3eb58e8cef9f098a8c75746a30f0c6961", GitTreeState:"dirty", BuildDate:"2016-05-27T06:55:19Z", GoVersion:"go1.6.1", Compiler:"gc", Platform:"linux/amd64"}
