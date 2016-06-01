@@ -13,7 +13,7 @@ The script used is [full-test](full-test).
 
   1. the `LOG_LEVEL` variable is set to 5 in order to capture the number of calls to _syncClaim()_ and
 to _syncVolume()_. This is hard-coded in the script. 
-  2. the user running the test needs to export the `CLAIM_BINDER_SYNC_PERIOD` variable to _10m_ (current default), _30s_, or _10s_ to match the tables below.
+  2. the user running the test needs to export the `CLAIM_BINDER_SYNC_PERIOD` variable to _10m_ (old default), _30s_, 15s (new default -- see PR #26414), or _10s_ to match the tables below.
 
 The method used to measure binding performance is simple (maybe too simple?). **full-test** does the following:
 + starts an all-in-one cluster via _hack/local-up-cluster.sh_. This is needed because I was not able to delete k8s log files,
@@ -25,8 +25,7 @@ other times the claims are created first (which always takes longer).
 + the elapsed time of each _pv-test_ run is recorded.
 + the number of times that _syncClaim()_ and _syncVolume() are called is updated.
 + the total time to run _full-test_ is recorded and displayed.
-+ _full_test_ was run against different versions of k8s and with two CLAIM_BINDER_SYNC_PERIOD values
-(**10m**, which is the default, and **30s**).
++ _full_test_ was run against different versions of k8s and with various CLAIM_BINDER_SYNC_PERIOD values.
 
 # Performance Results
 (unexpected or poor results are in **bold**)
@@ -38,20 +37,20 @@ Client Version: version.Info{Major:"1", Minor:"3+", GitVersion:"v1.3.0-alpha.4.8
 Server Version: version.Info{Major:"1", Minor:"3+", GitVersion:"v1.3.0-alpha.4.869+c1c0567e37b699-dirty", GitCommit:"c1c0567e37b6990a2ad4d6662dbaf3e3c5d2fd36", GitTreeState:"dirty", BuildDate:"2016-05-31T23:04:23Z", GoVersion:"go1.6.1", Compiler:"gc", Platform:"linux/amd64"}
 ```
 #### _PVs created before claims_ (14 tests):
-| 10m claim sync period | 30s claim sync period | 10s claim sync period |
-| --- | --- | --- |
-| Errors: 39* | Errors: 12* | Errors: 6* |
-| Elapsed: 615.02s | Elapsed: 522.71s | Elapsed: 248.73s |
-| syncVolume calls: 112 | syncVolume calls: 322 | syncVolume calls: 354 |
-| syncClaim calls: 13 | syncClaim calls: 49 | syncClaim calls: 60 |
+| 10m claim sync period | 30s claim sync period | 15s claim sync period | 10s claim sync period |
+| --- | --- | --- | --- |
+| Errors: 39* | Errors: 12* | Errors: 6* | Errors: 5* |
+| Elapsed: 615.02s | Elapsed: 522.71s | Elapsed: 306.87s | Elapsed:  253.10s |
+| syncVolume calls: 112 | syncVolume calls: 322 | syncVolume calls: 386 | syncVolume calls: 380 |
+| syncClaim calls: 13 | syncClaim calls: 49 | syncClaim calls: 65 | syncClaim calls: 63  |
 
 #### _Claims created before PVs_ (14 tests):
-| 10m claim sync period | 30s claim sync period | 10s claim sync period |
-| --- | --- | --- |
-| Errors: 32* | Errors: 3* | Errors: 2* |
-| Elapsed: 2690.17s | Elapsed: 682.91s | Elapsed: 412.02s |
-| syncVolume calls: 68 | syncVolume calls: 378 | syncVolume calls: 474 |
-| syncClaim calls: 1 | syncClaim calls: 60 | syncClaim calls: 95 |
+| 10m claim sync period | 30s claim sync period | 15s claim sync period | 10s claim sync period |
+| --- | --- | --- | --- |
+| Errors: 32* | Errors: 3* | Errors: 7* | Errors: 2* |
+| Elapsed: 2690.17s | Elapsed: 682.91s | Elapsed: 422.54s | Elapsed: 412.02s |
+| syncVolume calls: 68 | syncVolume calls: 378 | syncVolume calls: 398 | syncVolume calls: 474 |
+| syncClaim calls: 1 | syncClaim calls: 60 | syncClaim calls: 66 | syncClaim calls: 95 |
 
 
 + **2016-05-26 v1.3.0-alpha.4.581**
